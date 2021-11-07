@@ -63,19 +63,19 @@ namespace Weapons
 		
 		public void Awake()
 		{
-			Item ironFangAxe = new("ironfang", "IronFangAxe", "IronFang");
+			Item ironFangAxe = new Item("ironfang", "IronFangAxe", "IronFang");
 			ironFangAxe.Crafting.Add(CraftingTable.Forge, 3);
 			ironFangAxe.RequiredItems.Add("Iron", 20);
 			ironFangAxe.RequiredItems.Add("WolfFang", 10);
 			ironFangAxe.RequiredItems.Add("Silver", 4);
 			ironFangAxe.CraftAmount = 2; // We really want to dual wield these
 			
-			Item heroBlade = new("heroset", "HeroBlade");
+			Item heroBlade = new Item("heroset", "HeroBlade");
 			heroBlade.Crafting.Add(CraftingTable.Workbench, 2);
 			heroBlade.RequiredItems.Add("Wood", 5);
 			heroBlade.RequiredItems.Add("DeerHide", 2);
 			
-			Item heroShield = new("heroset", "HeroShield");
+			Item heroShield = new Item("heroset", "HeroShield");
 			heroShield.Crafting.Add(CraftingTable.Workbench, 1);
 			heroShield.RequiredItems.Add("Wood", 10);
 			heroShield.RequiredItems.Add("Flint", 5);
