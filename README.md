@@ -7,7 +7,7 @@ Can be used to easily add new items to Valheim.
 Copy the asset bundle into your project and make sure to set it as an EmbeddedResource in the properties of the asset bundle.
 Default path for the asset bundle is an `assets` directory, but you can override this.
 
-### Copying the ItemManager.cs into your project
+### Option 1: Copying the ItemManager.cs into your project
 
 The easiest way is to simply copy the ItemManager.cs as a new class into your mod project.
 Then add the following three lines to the bottom of the first PropertyGroup in your .csproj file, to enable C# V9.0 features and to allow the use of publicized DLLs.
@@ -20,7 +20,7 @@ Then add the following three lines to the bottom of the first PropertyGroup in y
 
 After that, simply add `using ItemManager;` to your mod and use the `Item` class, to add your items.
 
-### Merging the precompiled DLL into your mod
+### Option 2: Merging the precompiled DLL into your mod
 
 Download the ItemManager.dll from the release section to the right.
 Including the dll is best done via ILRepack (https://github.com/ravibpatel/ILRepack.Lib.MSBuild.Task). You can load this package (ILRepack.Lib.MSBuild.Task) from NuGet.
