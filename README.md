@@ -6,6 +6,7 @@ Can be used to easily add new items to Valheim.
 
 Copy the asset bundle into your project and make sure to set it as an EmbeddedResource in the properties of the asset bundle.
 Default path for the asset bundle is an `assets` directory, but you can override this.
+This way, you don't have to distribute your assets with your mod. They will be embedded into your mods DLL.
 
 ### Option 1: Copying the ItemManager.cs into your project
 
