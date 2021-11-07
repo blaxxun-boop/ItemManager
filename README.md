@@ -51,10 +51,10 @@ This adds three different weapons from two different asset bundles. The `ironfan
 using BepInEx;
 using ItemManager;
 
-namespace IronFangAxe
+namespace Weapons
 {
 	[BepInPlugin(ModGUID, ModName, ModVersion)]
-	public class IronFangAxe : BaseUnityPlugin
+	public class Weapons : BaseUnityPlugin
 	{
 		private const string ModName = "Weapons";
 		private const string ModVersion = "1.0";
