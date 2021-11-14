@@ -65,20 +65,25 @@ namespace Weapons
 		{
 			Item ironFangAxe = new Item("ironfang", "IronFangAxe", "IronFang");
 			ironFangAxe.Crafting.Add(CraftingTable.Forge, 3);
-			ironFangAxe.RequiredItems.Add("Iron", 20);
-			ironFangAxe.RequiredItems.Add("WolfFang", 10);
-			ironFangAxe.RequiredItems.Add("Silver", 4);
+			ironFangAxe.RequiredItems.Add("Iron", 120);
+			ironFangAxe.RequiredItems.Add("WolfFang", 20);
+			ironFangAxe.RequiredItems.Add("Silver", 40);
+			ironFangAxe.RequiredUpgradeItems.Add("Iron", 20); // Upgrade requirements are per item, even if you craft two at the same time
+			ironFangAxe.RequiredUpgradeItems.Add("Silver", 10); // 10 Silver: You need 10 silver for level 2, 20 silver for level 3, 30 silver for level 4
 			ironFangAxe.CraftAmount = 2; // We really want to dual wield these
 			
 			Item heroBlade = new Item("heroset", "HeroBlade");
 			heroBlade.Crafting.Add(CraftingTable.Workbench, 2);
 			heroBlade.RequiredItems.Add("Wood", 5);
 			heroBlade.RequiredItems.Add("DeerHide", 2);
+			heroBlade.RequiredUpgradeItems.Add("Wood", 2);
+			heroBlade.RequiredUpgradeItems.Add("Flint", 2); // You can even add new items for the upgrade
 			
 			Item heroShield = new Item("heroset", "HeroShield");
 			heroShield.Crafting.Add(CraftingTable.Workbench, 1);
 			heroShield.RequiredItems.Add("Wood", 10);
 			heroShield.RequiredItems.Add("Flint", 5);
+			heroShield.RequiredUpgradeItems.Add("Wood", 5);
 		}
 	}
 }
