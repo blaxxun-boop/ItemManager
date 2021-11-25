@@ -1,6 +1,6 @@
 # Item Manager
 
-Can be used to easily add new items to Valheim.
+Can be used to easily add new items to Valheim. Will automatically add config options to your mod and sync the configuration from a server, if the mod is installed on the server as well.
 
 ## How to add items
 
@@ -8,23 +8,10 @@ Copy the asset bundle into your project and make sure to set it as an EmbeddedRe
 Default path for the asset bundle is an `assets` directory, but you can override this.
 This way, you don't have to distribute your assets with your mod. They will be embedded into your mods DLL.
 
-### Option 1: Copying the ItemManager.cs into your project
+### Merging the DLLs into your mod
 
-The easiest way is to simply copy the ItemManager.cs as a new class into your mod project.
-Then add the following three lines to the bottom of the first PropertyGroup in your .csproj file, to enable C# V9.0 features and to allow the use of publicized DLLs.
-
-```xml
-<LangVersion>9</LangVersion>
-<Nullable>enable</Nullable>
-<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-```
-
-After that, simply add `using ItemManager;` to your mod and use the `Item` class, to add your items.
-
-### Option 2: Merging the precompiled DLL into your mod
-
-Download the ItemManager.dll from the release section to the right.
-Including the dll is best done via ILRepack (https://github.com/ravibpatel/ILRepack.Lib.MSBuild.Task). You can load this package (ILRepack.Lib.MSBuild.Task) from NuGet.
+Download the ItemManager.dll and the ServerSync.dll from the release section to the right.
+Including the DLLs is best done via ILRepack (https://github.com/ravibpatel/ILRepack.Lib.MSBuild.Task). You can load this package (ILRepack.Lib.MSBuild.Task) from NuGet.
 
 If you have installed ILRepack via NuGet, simply create a file named `ILRepack.targets` in your project and copy the following content into the file
 
@@ -35,13 +22,14 @@ If you have installed ILRepack via NuGet, simply create a file named `ILRepack.t
         <ItemGroup>
             <InputAssemblies Include="$(TargetPath)" />
             <InputAssemblies Include="$(OutputPath)\ItemManager.dll" />
+            <InputAssemblies Include="$(OutputPath)\ServerSync.dll" />
         </ItemGroup>
         <ILRepack Parallel="true" DebugInfo="true" Internalize="true" InputAssemblies="@(InputAssemblies)" OutputFile="$(TargetPath)" TargetKind="SameAsPrimaryAssembly" LibraryPath="$(OutputPath)" />
     </Target>
 </Project>
 ```
 
-Make sure to set the ItemManager.dll in your project to "Copy to output directory" in the properties of the dll and to add a reference to it.
+Make sure to set the ItemManager.dll and the ServerSync.dll in your project to "Copy to output directory" in the properties of the DLLs and to add a reference to it.
 After that, simply add `using ItemManager;` to your mod and use the `Item` class, to add your items.
 
 ## Example project
@@ -87,5 +75,4 @@ namespace Weapons
 		}
 	}
 }
-
 ```
