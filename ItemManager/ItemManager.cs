@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using BepInEx;
+using BepInEx.Configuration;
 using HarmonyLib;
 using JetBrains.Annotations;
 using UnityEngine;
@@ -24,7 +26,7 @@ namespace ItemManager
 		public readonly string internalName;
 		public InternalName(string internalName) => this.internalName = internalName;
 	}
-	
+
 	[PublicAPI]
 	public class RequiredResourceList
 	{
@@ -32,7 +34,7 @@ namespace ItemManager
 
 		public void Add(string itemName, int amount) => Requirements.Add(new Requirement { itemName = itemName, amount = amount });
 	}
-	
+
 	[PublicAPI]
 	public class CraftingStationList
 	{
@@ -56,7 +58,19 @@ namespace ItemManager
 	[PublicAPI]
 	public class Item
 	{
+		private class ItemConfig
+		{
+			public ConfigEntry<string> craft = null!;
+			public ConfigEntry<string>? upgrade;
+			public ConfigEntry<CraftingTable> table = null!;
+			public ConfigEntry<int> tableLevel = null!;
+		}
+		
 		private static readonly List<Item> registeredItems = new();
+		private static Dictionary<Item, List<Recipe>> activeRecipes = new();
+		private static Dictionary<Item, ItemConfig> itemConfigs = new();
+
+		public static bool ConfigurationEnabled = true;
 
 		public readonly GameObject Prefab;
 
@@ -66,25 +80,30 @@ namespace ItemManager
 		/// <para>Use one .Add for each resource type the item should need.</para>
 		/// </summary>
 		public readonly RequiredResourceList RequiredItems = new();
+
 		/// <summary>
 		/// Specifies the resources needed to upgrade the item.
 		/// <para>Use .Add to add resources with their internal ID and an amount. This amount will be multipled by the item quality level.</para>
 		/// <para>Use one .Add for each resource type the item should need.</para>
 		/// </summary>
 		public readonly RequiredResourceList RequiredUpgradeItems = new();
+
 		/// <summary>
 		/// Specifies the crafting station needed to craft the item.
 		/// <para>Use .Add to add a crafting station, using the CraftingTable enum and a minimum level for the crafting station.</para>
 		/// <para>Use one .Add for each crafting station.</para>
 		/// </summary>
 		public readonly CraftingStationList Crafting = new();
+
 		/// <summary>
 		/// Specifies the number of items that should be given to the player with a single craft of the item.
 		/// <para>Defaults to 1.</para>
 		/// </summary>
 		public int CraftAmount = 1;
 
-		public Item(string assetBundleFileName, string prefabName, string folderName = "assets") : this(PrefabManager.RegisterAssetBundle(assetBundleFileName, folderName), prefabName) { }
+		public Item(string assetBundleFileName, string prefabName, string folderName = "assets") : this(PrefabManager.RegisterAssetBundle(assetBundleFileName, folderName), prefabName)
+		{
+		}
 
 		public Item(AssetBundle bundle, string prefabName)
 		{
@@ -92,6 +111,68 @@ namespace ItemManager
 			registeredItems.Add(this);
 		}
 
+		private class ConfigurationManagerAttributes
+		{
+			public Action<ConfigEntryBase>? CustomDrawer;
+		}
+
+		internal static void Patch_FejdStartup()
+		{
+			if (ConfigurationEnabled)
+			{
+				foreach (Item item in registeredItems)
+				{
+					ItemConfig cfg = itemConfigs[item] = new ItemConfig();
+					
+					ConfigEntry<string> itemConfig(string name, string value, string desc) => config("Item Costs", name, value, new ConfigDescription(desc, null, new ConfigurationManagerAttributes { CustomDrawer = drawConfigTable }));
+
+					string localizedName = english.Localize(item.Prefab.GetComponent<ItemDrop>().m_itemData.m_shared.m_name).Replace("[", "").Replace("]", "").Replace("'", "").Replace("\"", "");
+					cfg.craft = itemConfig($"{localizedName} Crafting Costs", new SerializedRequirements(item.RequiredItems.Requirements).ToString(), $"Item costs to craft {localizedName}");
+					if (item.Prefab.GetComponent<ItemDrop>().m_itemData.m_shared.m_maxQuality > 1)
+					{
+						cfg.upgrade = itemConfig($"{localizedName} Upgrading Costs", new SerializedRequirements(item.RequiredUpgradeItems.Requirements).ToString(), $"Item costs per level to upgrade {localizedName}");
+					}
+
+					void ConfigChanged(object o, EventArgs e)
+					{
+						if (ObjectDB.instance && activeRecipes.ContainsKey(item))
+						{
+							foreach (Recipe recipe in activeRecipes[item])
+							{
+								recipe.m_resources = SerializedRequirements.toPieceReqs(ObjectDB.instance, new SerializedRequirements(cfg.craft.Value), new SerializedRequirements(cfg.upgrade?.Value ?? ""));
+							}
+						}
+					}
+
+					cfg.craft.SettingChanged += ConfigChanged;
+					if (cfg.upgrade != null)
+					{
+						cfg.upgrade.SettingChanged += ConfigChanged;
+					}
+
+					if (item.Crafting.Stations.Count > 0)
+					{
+						cfg.table = config("Item Costs", $"{localizedName} Crafting Station", item.Crafting.Stations.First().Table, $"Crafting station where {localizedName} is available.");
+						cfg.table.SettingChanged += (_, _) =>
+						{
+							if (ObjectDB.instance)
+							{
+								activeRecipes[item].First().m_craftingStation = ZNetScene.instance.GetPrefab(((InternalName)typeof(CraftingTable).GetMember(cfg.table.Value.ToString())[0].GetCustomAttributes(typeof(InternalName)).First()).internalName).GetComponent<CraftingStation>();
+							}
+						};
+						cfg.tableLevel = config("Item Costs", $"{localizedName} Crafting Station Level", item.Crafting.Stations.First().level, $"Required crafting station level to craft {localizedName}.");
+						cfg.tableLevel.SettingChanged += (_, _) =>
+						{
+							if (ObjectDB.instance)
+							{
+								activeRecipes[item].First().m_minStationLevel = cfg.tableLevel.Value;
+							}
+						};
+					}
+				}
+			}
+		}
+		
 		[HarmonyPriority(Priority.VeryHigh)]
 		internal static void Patch_ObjectDBInit(ObjectDB __instance)
 		{
@@ -102,17 +183,9 @@ namespace ItemManager
 
 			foreach (Item item in registeredItems)
 			{
-				ItemDrop ResItem(Requirement r) => __instance.GetItemPrefab(r.itemName).GetComponent<ItemDrop>();
-				Dictionary<string, Piece.Requirement> resources = item.RequiredItems.Requirements.ToDictionary(r => r.itemName, r => new Piece.Requirement { m_amount = r.amount, m_resItem = ResItem(r), m_amountPerLevel = 0 });
-				foreach (Requirement req in item.RequiredUpgradeItems.Requirements)
-				{
-					if (!resources.TryGetValue(req.itemName, out Piece.Requirement requirement))
-					{
-						requirement = resources[req.itemName] = new Piece.Requirement { m_resItem = ResItem(req), m_amount = 0 };
-					}
-					requirement.m_amountPerLevel = req.amount;
-				}
+				List<Recipe> recipes = new();
 
+				itemConfigs.TryGetValue(item, out ItemConfig? cfg);
 				foreach (CraftingStationConfig station in item.Crafting.Stations)
 				{
 					Recipe recipe = ScriptableObject.CreateInstance<Recipe>();
@@ -120,17 +193,21 @@ namespace ItemManager
 					recipe.m_amount = item.CraftAmount;
 					recipe.m_enabled = true;
 					recipe.m_item = item.Prefab.GetComponent<ItemDrop>();
-					recipe.m_resources = resources.Values.ToArray();
-					recipe.m_craftingStation = ZNetScene.instance.GetPrefab(((InternalName)typeof(CraftingTable).GetMember(station.Table.ToString())[0].GetCustomAttributes(typeof(InternalName)).First()).internalName).GetComponent<CraftingStation>();
-					recipe.m_minStationLevel = station.level;
+					recipe.m_resources = SerializedRequirements.toPieceReqs(__instance, cfg == null ? new SerializedRequirements(item.RequiredItems.Requirements) : new SerializedRequirements(cfg.craft.Value), cfg == null ? new SerializedRequirements(item.RequiredUpgradeItems.Requirements) : new SerializedRequirements(cfg.upgrade?.Value ?? ""));
+					recipe.m_craftingStation = ZNetScene.instance.GetPrefab(((InternalName)typeof(CraftingTable).GetMember((cfg == null || recipes.Count > 0 ? station.Table : cfg.table.Value).ToString())[0].GetCustomAttributes(typeof(InternalName)).First()).internalName).GetComponent<CraftingStation>();
+					recipe.m_minStationLevel = cfg == null || recipes.Count > 0 ? station.level : cfg.tableLevel.Value;
 
-					__instance.m_recipes.Add(recipe);
+					recipes.Add(recipe);
 				}
+
+				activeRecipes[item] = recipes;
+
+				__instance.m_recipes.AddRange(recipes);
 			}
 		}
 
 		private static bool CheckItemIsUpgrade(InventoryGui gui) => gui.m_selectedRecipe.Value?.m_quality > 0;
-		
+
 		internal static IEnumerable<CodeInstruction> Transpile_InventoryGui(IEnumerable<CodeInstruction> instructions)
 		{
 			List<CodeInstruction> instrs = instructions.ToList();
@@ -146,6 +223,158 @@ namespace ItemManager
 				}
 			}
 		}
+
+		private static void drawConfigTable(ConfigEntryBase cfg)
+		{
+			bool locked = cfg.Description.Tags.Select(a => a.GetType().Name == "ConfigurationManagerAttributes" ? (bool?)a.GetType().GetField("ReadOnly")?.GetValue(a) : null).FirstOrDefault(v => v != null) ?? false;
+			
+			List<Requirement> newReqs = new();
+			bool wasUpdated = false;
+
+			GUILayout.BeginVertical();
+			foreach (Requirement req in new SerializedRequirements((string)cfg.BoxedValue).Reqs)
+			{
+				GUILayout.BeginHorizontal();
+
+				int amount = req.amount;
+				if (int.TryParse(GUILayout.TextField(amount.ToString(), new GUIStyle(GUI.skin.textField) { fixedWidth = 40 }), out int newAmount) && newAmount != amount && !locked)
+				{
+					amount = newAmount;
+					wasUpdated = true;
+				}
+
+				string newItemName = GUILayout.TextField(req.itemName);
+				string itemName = locked ? req.itemName : newItemName;
+				wasUpdated = wasUpdated || itemName != req.itemName;
+
+				if (GUILayout.Button("x", new GUIStyle(GUI.skin.button) { fixedWidth = 21 }) && !locked)
+				{
+					wasUpdated = true;
+				}
+				else
+				{
+					newReqs.Add(new Requirement { amount = amount, itemName = itemName });
+				}
+
+				if (GUILayout.Button("+", new GUIStyle(GUI.skin.button) { fixedWidth = 21 }) && !locked)
+				{
+					wasUpdated = true;
+					newReqs.Add(new Requirement { amount = 1, itemName = "" });
+				}
+
+				GUILayout.EndHorizontal();
+			}
+			GUILayout.EndVertical();
+
+			if (wasUpdated)
+			{
+				cfg.BoxedValue = new SerializedRequirements(newReqs).ToString();
+			}
+		}
+
+		private class SerializedRequirements
+		{
+			public readonly List<Requirement> Reqs;
+
+			public SerializedRequirements(List<Requirement> reqs) => Reqs = reqs;
+
+			public SerializedRequirements(string reqs)
+			{
+				Reqs = reqs.Split(',').Select(r =>
+				{
+					string[] parts = r.Split(':');
+					return new Requirement { itemName = parts[0], amount = parts.Length > 1 && int.TryParse(parts[1], out int amount) ? amount : 1 };
+				}).ToList();
+			}
+
+			public override string ToString()
+			{
+				return string.Join(",", Reqs.Select(r => $"{r.itemName}:{r.amount}"));
+			}
+
+			public static Piece.Requirement[] toPieceReqs(ObjectDB objectDB, SerializedRequirements craft, SerializedRequirements upgrade)
+			{
+				ItemDrop? ResItem(Requirement r)
+				{
+					ItemDrop? item = objectDB.GetItemPrefab(r.itemName)?.GetComponent<ItemDrop>();
+					if (item == null)
+					{
+						Debug.LogWarning($"The required item '{r.itemName}' does not exist.");
+					}
+					return item;
+				}
+
+				Dictionary<string, Piece.Requirement?> resources = craft.Reqs.Where(r => r.itemName != "").ToDictionary(r => r.itemName, r => ResItem(r) is ItemDrop item ? new Piece.Requirement { m_amount = r.amount, m_resItem = item, m_amountPerLevel = 0 } : null);
+				foreach (Requirement req in upgrade.Reqs.Where(r => r.itemName != ""))
+				{
+					if ((!resources.TryGetValue(req.itemName, out Piece.Requirement? requirement) || requirement == null) && ResItem(req) is ItemDrop item)
+					{
+						requirement = resources[req.itemName] = new Piece.Requirement { m_resItem = item, m_amount = 0 };
+					}
+
+					if (requirement != null)
+					{
+						requirement.m_amountPerLevel = req.amount;
+					}
+				}
+
+				return resources.Values.Where(v => v != null).ToArray()!;
+			}
+		}
+
+		private static Localization? _english;
+
+		private static Localization english
+		{
+			get
+			{
+				if (_english == null)
+				{
+					_english = new Localization();
+					_english.SetupLanguage("English");
+				}
+
+				return _english;
+			}
+		}
+
+		private static BaseUnityPlugin? _plugin;
+		private static BaseUnityPlugin plugin => _plugin ??= (BaseUnityPlugin)BepInEx.Bootstrap.Chainloader.ManagerObject.GetComponent(Assembly.GetExecutingAssembly().DefinedTypes.First(t => t.IsClass && typeof(BaseUnityPlugin).IsAssignableFrom(t)));
+
+		private static bool hasConfigSync = true;
+		private static object? _configSync;
+		private static object? configSync
+		{
+			get
+			{
+				if (_configSync == null && hasConfigSync)
+				{
+					if (Assembly.GetExecutingAssembly().GetType("ServerSync.ConfigSync") is Type configSyncType)
+					{
+						_configSync = Activator.CreateInstance(configSyncType, plugin.Info.Metadata.GUID + " ItemManager");
+						configSyncType.GetField("CurrentVersion").SetValue(_configSync, plugin.Info.Metadata.Version.ToString());
+						configSyncType.GetProperty("IsLocked")!.SetValue(_configSync, true);
+					}
+					else
+					{
+						hasConfigSync = false;
+					}
+				}
+
+				return _configSync;
+			}
+		}
+
+		private static ConfigEntry<T> config<T>(string group, string name, T value, ConfigDescription description)
+		{
+			ConfigEntry<T> configEntry = plugin.Config.Bind(group, name, value, description);
+
+			configSync?.GetType().GetMethod("AddConfigEntry")!.MakeGenericMethod(typeof(T)).Invoke(configSync, new object[] { configEntry });
+
+			return configEntry;
+		}
+
+		private static ConfigEntry<T> config<T>(string group, string name, T value, string description) => config(group, name, value, new ConfigDescription(description));
 	}
 
 	public static class PrefabManager
@@ -157,16 +386,15 @@ namespace ItemManager
 			harmony.Patch(AccessTools.DeclaredMethod(typeof(ObjectDB), nameof(ObjectDB.Awake)), new HarmonyMethod(AccessTools.DeclaredMethod(typeof(PrefabManager), nameof(Patch_ObjectDBInit))));
 			harmony.Patch(AccessTools.DeclaredMethod(typeof(ObjectDB), nameof(ObjectDB.CopyOtherDB)), new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_ObjectDBInit))));
 			harmony.Patch(AccessTools.DeclaredMethod(typeof(ObjectDB), nameof(ObjectDB.Awake)), new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_ObjectDBInit))));
+			harmony.Patch(AccessTools.DeclaredMethod(typeof(FejdStartup), nameof(FejdStartup.Awake)), new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_FejdStartup))));
 			harmony.Patch(AccessTools.DeclaredMethod(typeof(ZNetScene), nameof(ZNetScene.Awake)), new HarmonyMethod(AccessTools.DeclaredMethod(typeof(PrefabManager), nameof(Patch_ZNetSceneAwake))));
 			harmony.Patch(AccessTools.DeclaredMethod(typeof(InventoryGui), nameof(InventoryGui.UpdateRecipe)), transpiler: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Transpile_InventoryGui))));
 		}
-		
+
 		private struct BundleId
 		{
-			[UsedImplicitly]
-			public string assetBundleFileName;
-			[UsedImplicitly]
-			public string folderName;
+			[UsedImplicitly] public string assetBundleFileName;
+			[UsedImplicitly] public string folderName;
 		}
 
 		private static readonly Dictionary<BundleId, AssetBundle> bundleCache = new();
@@ -178,6 +406,7 @@ namespace ItemManager
 			{
 				assets = bundleCache[id] = AssetBundle.LoadFromStream(Assembly.GetExecutingAssembly().GetManifestResourceStream(Assembly.GetExecutingAssembly().GetName().Name + $".{folderName}." + assetBundleFileName));
 			}
+
 			return assets;
 		}
 
@@ -202,9 +431,10 @@ namespace ItemManager
 					__instance.m_items.Add(prefab);
 				}
 			}
+
 			__instance.UpdateItemHashes();
 		}
-		
+
 		[HarmonyPriority(Priority.VeryHigh)]
 		private static void Patch_ZNetSceneAwake(ZNetScene __instance)
 		{
