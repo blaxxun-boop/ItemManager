@@ -52,7 +52,7 @@ namespace Weapons
 		public void Awake()
 		{
 			Item ironFangAxe = new Item("ironfang", "IronFangAxe", "IronFang");
-			ironFangAxe.Crafting.Add(CraftingTable.Forge, 3);
+			ironFangAxe.Crafting.Add("MyAmazingCraftingStation", 3); // Custom crafting stations can be specified as a string
 			ironFangAxe.RequiredItems.Add("Iron", 120);
 			ironFangAxe.RequiredItems.Add("WolfFang", 20);
 			ironFangAxe.RequiredItems.Add("Silver", 40);

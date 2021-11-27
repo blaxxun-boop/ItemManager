@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text.RegularExpressions;
 using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
@@ -14,11 +15,13 @@ namespace ItemManager
 	[PublicAPI]
 	public enum CraftingTable
 	{
+		None,
 		[InternalName("piece_workbench")] Workbench,
 		[InternalName("piece_cauldron")] Cauldron,
 		[InternalName("forge")] Forge,
 		[InternalName("piece_artisanstation")] ArtisanTable,
-		[InternalName("piece_stonecutter")] StoneCutter
+		[InternalName("piece_stonecutter")] StoneCutter,
+		Custom
 	}
 
 	public class InternalName : Attribute
@@ -41,6 +44,7 @@ namespace ItemManager
 		public readonly List<CraftingStationConfig> Stations = new();
 
 		public void Add(CraftingTable table, int level) => Stations.Add(new CraftingStationConfig { Table = table, level = level });
+		public void Add(string customTable, int level) => Stations.Add(new CraftingStationConfig { Table = CraftingTable.Custom, level = level, custom = customTable });
 	}
 
 	public struct Requirement
@@ -53,6 +57,7 @@ namespace ItemManager
 	{
 		public CraftingTable Table;
 		public int level;
+		public string? custom;
 	}
 
 	[PublicAPI]
@@ -64,8 +69,9 @@ namespace ItemManager
 			public ConfigEntry<string>? upgrade;
 			public ConfigEntry<CraftingTable> table = null!;
 			public ConfigEntry<int> tableLevel = null!;
+			public ConfigEntry<string> customTable = null!;
 		}
-		
+
 		private static readonly List<Item> registeredItems = new();
 		private static Dictionary<Item, List<Recipe>> activeRecipes = new();
 		private static Dictionary<Item, ItemConfig> itemConfigs = new();
@@ -113,66 +119,109 @@ namespace ItemManager
 
 		private class ConfigurationManagerAttributes
 		{
-			public Action<ConfigEntryBase>? CustomDrawer;
+			[UsedImplicitly] public int? Order;
+			[UsedImplicitly] public bool? Browsable;
+			[UsedImplicitly] public Action<ConfigEntryBase>? CustomDrawer;
 		}
 
 		internal static void Patch_FejdStartup()
 		{
+			Assembly? bepinexConfigManager = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == "ConfigurationManager");
+
+			Type? configManagerType = bepinexConfigManager?.GetType("ConfigurationManager.ConfigurationManager");
+			object? configManager = configManagerType == null ? null : BepInEx.Bootstrap.Chainloader.ManagerObject.GetComponent(configManagerType);
+
+			void reloadConfigDisplay() => configManagerType?.GetMethod("BuildSettingList")!.Invoke(configManager, Array.Empty<object>());
+
 			if (ConfigurationEnabled)
 			{
 				foreach (Item item in registeredItems)
 				{
 					ItemConfig cfg = itemConfigs[item] = new ItemConfig();
-					
-					ConfigEntry<string> itemConfig(string name, string value, string desc) => config("Item Costs", name, value, new ConfigDescription(desc, null, new ConfigurationManagerAttributes { CustomDrawer = drawConfigTable }));
-
-					string localizedName = english.Localize(item.Prefab.GetComponent<ItemDrop>().m_itemData.m_shared.m_name).Replace("[", "").Replace("]", "").Replace("'", "").Replace("\"", "");
-					cfg.craft = itemConfig($"{localizedName} Crafting Costs", new SerializedRequirements(item.RequiredItems.Requirements).ToString(), $"Item costs to craft {localizedName}");
-					if (item.Prefab.GetComponent<ItemDrop>().m_itemData.m_shared.m_maxQuality > 1)
-					{
-						cfg.upgrade = itemConfig($"{localizedName} Upgrading Costs", new SerializedRequirements(item.RequiredUpgradeItems.Requirements).ToString(), $"Item costs per level to upgrade {localizedName}");
-					}
-
-					void ConfigChanged(object o, EventArgs e)
-					{
-						if (ObjectDB.instance && activeRecipes.ContainsKey(item))
-						{
-							foreach (Recipe recipe in activeRecipes[item])
-							{
-								recipe.m_resources = SerializedRequirements.toPieceReqs(ObjectDB.instance, new SerializedRequirements(cfg.craft.Value), new SerializedRequirements(cfg.upgrade?.Value ?? ""));
-							}
-						}
-					}
-
-					cfg.craft.SettingChanged += ConfigChanged;
-					if (cfg.upgrade != null)
-					{
-						cfg.upgrade.SettingChanged += ConfigChanged;
-					}
 
 					if (item.Crafting.Stations.Count > 0)
 					{
-						cfg.table = config("Item Costs", $"{localizedName} Crafting Station", item.Crafting.Stations.First().Table, $"Crafting station where {localizedName} is available.");
-						cfg.table.SettingChanged += (_, _) =>
+						string localizedName = new Regex("['[\"\\]]").Replace(english.Localize(item.Prefab.GetComponent<ItemDrop>().m_itemData.m_shared.m_name), "");
+						int order = 0;
+
+						List<ConfigurationManagerAttributes> hideWhenNoneAttributes = new();
+
+						cfg.table = config(localizedName, "Crafting Station", item.Crafting.Stations.First().Table, new ConfigDescription($"Crafting station where {localizedName} is available.", null, new ConfigurationManagerAttributes { Order = --order }));
+						ConfigurationManagerAttributes customTableAttributes = new() { Order = --order, Browsable = cfg.table.Value == CraftingTable.Custom };
+						cfg.customTable = config(localizedName, "Custom Crafting Station", item.Crafting.Stations.First().custom ?? "", new ConfigDescription("", null, customTableAttributes));
+
+						void TableConfigChanged(object o, EventArgs e)
 						{
-							if (ObjectDB.instance)
+							if (activeRecipes.Count > 0)
 							{
-								activeRecipes[item].First().m_craftingStation = ZNetScene.instance.GetPrefab(((InternalName)typeof(CraftingTable).GetMember(cfg.table.Value.ToString())[0].GetCustomAttributes(typeof(InternalName)).First()).internalName).GetComponent<CraftingStation>();
+								if (cfg.table.Value is CraftingTable.None)
+								{
+									activeRecipes[item].First().m_craftingStation = null;
+								}
+								else if (cfg.table.Value is CraftingTable.Custom)
+								{
+									activeRecipes[item].First().m_craftingStation = ZNetScene.instance.GetPrefab(cfg.customTable.Value)?.GetComponent<CraftingStation>();
+								}
+								else
+								{
+									activeRecipes[item].First().m_craftingStation = ZNetScene.instance.GetPrefab(((InternalName)typeof(CraftingTable).GetMember(cfg.table.Value.ToString())[0].GetCustomAttributes(typeof(InternalName)).First()).internalName).GetComponent<CraftingStation>();
+								}
 							}
-						};
-						cfg.tableLevel = config("Item Costs", $"{localizedName} Crafting Station Level", item.Crafting.Stations.First().level, $"Required crafting station level to craft {localizedName}.");
+							customTableAttributes.Browsable = cfg.table.Value == CraftingTable.Custom;
+							foreach (ConfigurationManagerAttributes attributes in hideWhenNoneAttributes)
+							{
+								attributes.Browsable = cfg.table.Value != CraftingTable.None;
+							}
+							reloadConfigDisplay();
+						}
+						cfg.table.SettingChanged += TableConfigChanged;
+						cfg.customTable.SettingChanged += TableConfigChanged;
+
+						ConfigurationManagerAttributes tableLevelAttributes = new() { Order = --order, Browsable = cfg.table.Value != CraftingTable.None };
+						hideWhenNoneAttributes.Add(tableLevelAttributes);
+						cfg.tableLevel = config(localizedName, "Crafting Station Level", item.Crafting.Stations.First().level, new ConfigDescription($"Required crafting station level to craft {localizedName}.", null, tableLevelAttributes));
 						cfg.tableLevel.SettingChanged += (_, _) =>
 						{
-							if (ObjectDB.instance)
+							if (activeRecipes.Count > 0)
 							{
 								activeRecipes[item].First().m_minStationLevel = cfg.tableLevel.Value;
 							}
 						};
+
+						ConfigEntry<string> itemConfig(string name, string value, string desc)
+						{
+							ConfigurationManagerAttributes attributes = new() { CustomDrawer = drawConfigTable, Order = --order, Browsable = cfg.table.Value != CraftingTable.None };
+							hideWhenNoneAttributes.Add(attributes);
+							return config(localizedName, name, value, new ConfigDescription(desc, null, attributes));
+						}
+
+						cfg.craft = itemConfig("Crafting Costs", new SerializedRequirements(item.RequiredItems.Requirements).ToString(), $"Item costs to craft {localizedName}");
+						if (item.Prefab.GetComponent<ItemDrop>().m_itemData.m_shared.m_maxQuality > 1)
+						{
+							cfg.upgrade = itemConfig("Upgrading Costs", new SerializedRequirements(item.RequiredUpgradeItems.Requirements).ToString(), $"Item costs per level to upgrade {localizedName}");
+						}
+
+						void ConfigChanged(object o, EventArgs e)
+						{
+							if (ObjectDB.instance && activeRecipes.ContainsKey(item))
+							{
+								foreach (Recipe recipe in activeRecipes[item])
+								{
+									recipe.m_resources = SerializedRequirements.toPieceReqs(ObjectDB.instance, new SerializedRequirements(cfg.craft.Value), new SerializedRequirements(cfg.upgrade?.Value ?? ""));
+								}
+							}
+						}
+
+						cfg.craft.SettingChanged += ConfigChanged;
+						if (cfg.upgrade != null)
+						{
+							cfg.upgrade.SettingChanged += ConfigChanged;
+						}
 					}
 				}
 			}
 		}
-		
+
 		[HarmonyPriority(Priority.VeryHigh)]
 		internal static void Patch_ObjectDBInit(ObjectDB __instance)
 		{
@@ -194,7 +243,25 @@ namespace ItemManager
 					recipe.m_enabled = true;
 					recipe.m_item = item.Prefab.GetComponent<ItemDrop>();
 					recipe.m_resources = SerializedRequirements.toPieceReqs(__instance, cfg == null ? new SerializedRequirements(item.RequiredItems.Requirements) : new SerializedRequirements(cfg.craft.Value), cfg == null ? new SerializedRequirements(item.RequiredUpgradeItems.Requirements) : new SerializedRequirements(cfg.upgrade?.Value ?? ""));
-					recipe.m_craftingStation = ZNetScene.instance.GetPrefab(((InternalName)typeof(CraftingTable).GetMember((cfg == null || recipes.Count > 0 ? station.Table : cfg.table.Value).ToString())[0].GetCustomAttributes(typeof(InternalName)).First()).internalName).GetComponent<CraftingStation>();
+					if ((cfg == null || recipes.Count > 0 ? station.Table : cfg.table.Value) is CraftingTable.None)
+					{
+						recipe.m_craftingStation = null;
+					}
+					else if ((cfg == null || recipes.Count > 0 ? station.Table : cfg.table.Value) is CraftingTable.Custom)
+					{
+						if (ZNetScene.instance.GetPrefab(cfg == null || recipes.Count > 0 ? station.custom : cfg.customTable.Value) is GameObject craftingTable)
+						{
+							recipe.m_craftingStation = craftingTable.GetComponent<CraftingStation>();
+						}
+						else
+						{
+							Debug.LogWarning($"Custom crafting station '{(cfg == null || recipes.Count > 0 ? station.custom : cfg.customTable.Value)}' does not exist");
+						}
+					}
+					else
+					{
+						recipe.m_craftingStation = ZNetScene.instance.GetPrefab(((InternalName)typeof(CraftingTable).GetMember((cfg == null || recipes.Count > 0 ? station.Table : cfg.table.Value).ToString())[0].GetCustomAttributes(typeof(InternalName)).First()).internalName).GetComponent<CraftingStation>();
+					}
 					recipe.m_minStationLevel = cfg == null || recipes.Count > 0 ? station.level : cfg.tableLevel.Value;
 
 					recipes.Add(recipe);
@@ -227,7 +294,7 @@ namespace ItemManager
 		private static void drawConfigTable(ConfigEntryBase cfg)
 		{
 			bool locked = cfg.Description.Tags.Select(a => a.GetType().Name == "ConfigurationManagerAttributes" ? (bool?)a.GetType().GetField("ReadOnly")?.GetValue(a) : null).FirstOrDefault(v => v != null) ?? false;
-			
+
 			List<Requirement> newReqs = new();
 			bool wasUpdated = false;
 
@@ -343,6 +410,7 @@ namespace ItemManager
 
 		private static bool hasConfigSync = true;
 		private static object? _configSync;
+
 		private static object? configSync
 		{
 			get
