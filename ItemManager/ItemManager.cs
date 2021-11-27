@@ -141,7 +141,7 @@ namespace ItemManager
 
 					if (item.Crafting.Stations.Count > 0)
 					{
-						string localizedName = new Regex("['[\"\\]]").Replace(english.Localize(item.Prefab.GetComponent<ItemDrop>().m_itemData.m_shared.m_name), "");
+						string localizedName = new Regex("['[\"\\]]").Replace(english.Localize(item.Prefab.GetComponent<ItemDrop>().m_itemData.m_shared.m_name), "").Trim();
 						int order = 0;
 
 						List<ConfigurationManagerAttributes> hideWhenNoneAttributes = new();
