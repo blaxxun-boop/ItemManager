@@ -107,6 +107,58 @@ namespace ItemManager
 		/// </summary>
 		public int CraftAmount = 1;
 
+		private LocalizeKey? _name;
+
+		public LocalizeKey Name
+		{
+			get
+			{
+				if (_name is LocalizeKey name)
+				{
+					return name;
+				}
+
+				ItemDrop.ItemData.SharedData data = Prefab.GetComponent<ItemDrop>().m_itemData.m_shared;
+				if (data.m_name.StartsWith("$"))
+				{
+					_name = new LocalizeKey(data.m_name);
+				}
+				else
+				{
+					string key = "$item_" + Prefab.name.Replace(" ", "_");
+					_name = new LocalizeKey(key).English(data.m_name);
+					data.m_name = key;
+				}
+				return _name;
+			}
+		}
+
+		private LocalizeKey? _description;
+
+		public LocalizeKey Description
+		{
+			get
+			{
+				if (_description is LocalizeKey description)
+				{
+					return description;
+				}
+
+				ItemDrop.ItemData.SharedData data = Prefab.GetComponent<ItemDrop>().m_itemData.m_shared;
+				if (data.m_description.StartsWith("$"))
+				{
+					_description = new LocalizeKey(data.m_description);
+				}
+				else
+				{
+					string key = "$itemdesc_" + Prefab.name.Replace(" ", "_");
+					_description = new LocalizeKey(key).English(data.m_description);
+					data.m_description = key;
+				}
+				return _description;
+			}
+		}
+
 		public Item(string assetBundleFileName, string prefabName, string folderName = "assets") : this(PrefabManager.RegisterAssetBundle(assetBundleFileName, folderName), prefabName)
 		{
 		}
@@ -443,6 +495,62 @@ namespace ItemManager
 		}
 
 		private static ConfigEntry<T> config<T>(string group, string name, T value, string description) => config(group, name, value, new ConfigDescription(description));
+	}
+
+	[PublicAPI]
+	public class LocalizeKey
+	{
+		public readonly string Key;
+
+		public LocalizeKey(string key) => Key = key.Replace("$", "");
+
+		public LocalizeKey English(string key) => addForLang("English", key);
+		public LocalizeKey Swedish(string key) => addForLang("Swedish", key);
+		public LocalizeKey French(string key) => addForLang("French", key);
+		public LocalizeKey Italian(string key) => addForLang("Italian", key);
+		public LocalizeKey German(string key) => addForLang("German", key);
+		public LocalizeKey Spanish(string key) => addForLang("Spanish", key);
+		public LocalizeKey Russian(string key) => addForLang("Russian", key);
+		public LocalizeKey Romanian(string key) => addForLang("Romanian", key);
+		public LocalizeKey Bulgarian(string key) => addForLang("Bulgarian", key);
+		public LocalizeKey Macedonian(string key) => addForLang("Macedonian", key);
+		public LocalizeKey Finnish(string key) => addForLang("Finnish", key);
+		public LocalizeKey Danish(string key) => addForLang("Danish", key);
+		public LocalizeKey Norwegian(string key) => addForLang("Norwegian", key);
+		public LocalizeKey Icelandic(string key) => addForLang("Icelandic", key);
+		public LocalizeKey Turkish(string key) => addForLang("Turkish", key);
+		public LocalizeKey Lithuanian(string key) => addForLang("Lithuanian", key);
+		public LocalizeKey Czech(string key) => addForLang("Czech", key);
+		public LocalizeKey Hungarian(string key) => addForLang("Hungarian", key);
+		public LocalizeKey Slovak(string key) => addForLang("Slovak", key);
+		public LocalizeKey Polish(string key) => addForLang("Polish", key);
+		public LocalizeKey Dutch(string key) => addForLang("Dutch", key);
+		public LocalizeKey Portuguese_European(string key) => addForLang("Portuguese_European", key);
+		public LocalizeKey Portuguese_Brazilian(string key) => addForLang("Portuguese_Brazilian", key);
+		public LocalizeKey Chinese(string key) => addForLang("Chinese", key);
+		public LocalizeKey Japanese(string key) => addForLang("Japanese", key);
+		public LocalizeKey Korean(string key) => addForLang("Korean", key);
+		public LocalizeKey Hindi(string key) => addForLang("Hindi", key);
+		public LocalizeKey Thai(string key) => addForLang("Thai", key);
+		public LocalizeKey Abenaki(string key) => addForLang("Abenaki", key);
+		public LocalizeKey Croatian(string key) => addForLang("Croatian", key);
+		public LocalizeKey Georgian(string key) => addForLang("Georgian", key);
+		public LocalizeKey Greek(string key) => addForLang("Greek", key);
+		public LocalizeKey Serbian(string key) => addForLang("Serbian", key);
+		public LocalizeKey Ukrainian(string key) => addForLang("Ukrainian", key);
+
+		private LocalizeKey addForLang(string lang, string value)
+		{
+			if (Localization.instance.GetSelectedLanguage() == lang)
+			{
+				Localization.instance.AddWord(Key, value);
+			}
+			else if (lang == "English" && !Localization.instance.m_translations.ContainsKey(Key))
+			{
+				Localization.instance.AddWord(Key, value);
+			}
+			return this;
+		}
 	}
 
 	public static class PrefabManager
