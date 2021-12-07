@@ -52,6 +52,10 @@ namespace Weapons
 		public void Awake()
 		{
 			Item ironFangAxe = new Item("ironfang", "IronFangAxe", "IronFang");
+			ironFangAxe.Name.English("Iron Fang Axe"); // You can use this to fix the display name in code
+			ironFangAxe.Description.English("A sharp blade made of iron.");
+			ironFangAxe.Name.German("Eisenzahnaxt"); // Or add translations for other languages
+			ironFangAxe.Description.German("Eine sehr scharfe Axt, bestehend aus Eisen und Wolfszähnen.");
 			ironFangAxe.Crafting.Add("MyAmazingCraftingStation", 3); // Custom crafting stations can be specified as a string
 			ironFangAxe.RequiredItems.Add("Iron", 120);
 			ironFangAxe.RequiredItems.Add("WolfFang", 20);
