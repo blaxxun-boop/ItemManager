@@ -9,6 +9,7 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using JetBrains.Annotations;
 using UnityEngine;
+using VNEI.Logic;
 
 namespace ItemManager
 {
@@ -586,13 +587,24 @@ namespace ItemManager
 			return assets;
 		}
 
-		private static readonly List<GameObject> prefabs = new();
+		private struct PrefabData
+		{
+			public GameObject prefab;
+			public BaseUnityPlugin mod;
+		}
+		
+		private static readonly List<PrefabData> prefabs = new();
 
 		public static GameObject RegisterPrefab(AssetBundle assets, string prefabName)
 		{
 			GameObject prefab = assets.LoadAsset<GameObject>(prefabName);
+			PrefabData prefabData = new()
+			{
+				prefab = prefab,
+				mod = (BaseUnityPlugin)BepInEx.Bootstrap.Chainloader.ManagerObject.GetComponent(Assembly.GetExecutingAssembly().DefinedTypes.First(t => t.IsClass && typeof(BaseUnityPlugin).IsAssignableFrom(t)))
+			};
 
-			prefabs.Add(prefab);
+			prefabs.Add(prefabData);
 
 			return prefab;
 		}
@@ -600,23 +612,35 @@ namespace ItemManager
 		[HarmonyPriority(Priority.VeryHigh)]
 		private static void Patch_ObjectDBInit(ObjectDB __instance)
 		{
-			foreach (GameObject prefab in prefabs)
+			foreach (PrefabData prefabData in prefabs)
 			{
-				if (!__instance.m_items.Contains(prefab))
+				if (!__instance.m_items.Contains(prefabData.prefab))
 				{
-					__instance.m_items.Add(prefab);
+					__instance.m_items.Add(prefabData.prefab);
 				}
 			}
 
 			__instance.UpdateItemHashes();
 		}
 
+		private static void AddItemToVNEI(string prefabName, BaseUnityPlugin mod) {
+			// this needs to be wrapped inside a method to not throw an error when VNEI is not present
+			Indexing.SetModOfPrefab(prefabName, mod.Info.Metadata);
+		}
+
 		[HarmonyPriority(Priority.VeryHigh)]
 		private static void Patch_ZNetSceneAwake(ZNetScene __instance)
 		{
-			foreach (GameObject prefab in prefabs)
+			bool loadedVNEI = BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("com.maxsch.valheim.vnei");
+
+			foreach (PrefabData prefabData in prefabs)
 			{
-				__instance.m_prefabs.Add(prefab);
+				__instance.m_prefabs.Add(prefabData.prefab);
+
+				if (loadedVNEI && prefabData.mod)
+				{
+					AddItemToVNEI(prefabData.prefab.name, prefabData.mod);
+				}
 			}
 		}
 	}
