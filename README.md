@@ -57,6 +57,7 @@ namespace Weapons
 			ironFangAxe.Name.German("Eisenzahnaxt"); // Or add translations for other languages
 			ironFangAxe.Description.German("Eine sehr scharfe Axt, bestehend aus Eisen und Wolfszähnen.");
 			ironFangAxe.Crafting.Add("MyAmazingCraftingStation", 3); // Custom crafting stations can be specified as a string
+			ironFangAxe.MaximumRequiredStationLevel = 5; // Limits the crafting station level required to upgrade or repair the item to 5
 			ironFangAxe.RequiredItems.Add("Iron", 120);
 			ironFangAxe.RequiredItems.Add("WolfFang", 20);
 			ironFangAxe.RequiredItems.Add("Silver", 40);
