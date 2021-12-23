@@ -173,7 +173,7 @@ namespace ItemManager
 
 		public Item(AssetBundle bundle, string prefabName)
 		{
-			Prefab = PrefabManager.RegisterPrefab(bundle, prefabName);
+			Prefab = PrefabManager.RegisterPrefab(bundle, prefabName, true);
 			registeredItems.Add(this);
 			itemDropMap[Prefab.GetComponent<ItemDrop>()] = this;
 		}
@@ -631,7 +631,9 @@ namespace ItemManager
 		private static readonly List<GameObject> prefabs = new();
 		private static readonly List<GameObject> ZnetOnlyPrefabs = new();
 
-		public static GameObject RegisterPrefab(AssetBundle assets, string prefabName, bool addToObjectDb = true)
+		public static GameObject RegisterPrefab(string assetBundleFileName, string prefabName, string folderName = "assets") => RegisterPrefab(RegisterAssetBundle(assetBundleFileName, folderName), prefabName);
+
+		public static GameObject RegisterPrefab(AssetBundle assets, string prefabName, bool addToObjectDb = false)
 		{
 			GameObject prefab = assets.LoadAsset<GameObject>(prefabName);
 
