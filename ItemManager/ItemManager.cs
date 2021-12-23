@@ -629,12 +629,20 @@ namespace ItemManager
 		}
 
 		private static readonly List<GameObject> prefabs = new();
+		private static readonly List<GameObject> ZnetOnlyPrefabs = new();
 
-		public static GameObject RegisterPrefab(AssetBundle assets, string prefabName)
+		public static GameObject RegisterPrefab(AssetBundle assets, string prefabName, bool addToObjectDb = true)
 		{
 			GameObject prefab = assets.LoadAsset<GameObject>(prefabName);
 
-			prefabs.Add(prefab);
+			if (addToObjectDb)
+			{
+				prefabs.Add(prefab);
+			}
+			else
+			{
+				ZnetOnlyPrefabs.Add(prefab);
+			}
 
 			return prefab;
 		}
@@ -656,7 +664,7 @@ namespace ItemManager
 		[HarmonyPriority(Priority.VeryHigh)]
 		private static void Patch_ZNetSceneAwake(ZNetScene __instance)
 		{
-			foreach (GameObject prefab in prefabs)
+			foreach (GameObject prefab in prefabs.Concat(ZnetOnlyPrefabs))
 			{
 				__instance.m_prefabs.Add(prefab);
 			}
