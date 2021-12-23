@@ -65,6 +65,9 @@ namespace Weapons
 			ironFangAxe.RequiredUpgradeItems.Add("Silver", 10); // 10 Silver: You need 10 silver for level 2, 20 silver for level 3, 30 silver for level 4
 			ironFangAxe.CraftAmount = 2; // We really want to dual wield these
 			
+			GameObject axeVisual = ItemManager.PrefabManager.RegisterPrefab("ironfang", "axeVisual"); // If our axe has a special visual effect, like a glow, we can skip adding it to the ObjectDB this way
+			GameObject axeSound = ItemManager.PrefabManager.RegisterPrefab("ironfang", "axeSound"); // Same for special sound effects
+			
 			Item heroBlade = new Item("heroset", "HeroBlade");
 			heroBlade.Crafting.Add(CraftingTable.Workbench, 2);
 			heroBlade.RequiredItems.Add("Wood", 5);
