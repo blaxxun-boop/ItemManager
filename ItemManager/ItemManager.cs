@@ -771,7 +771,14 @@ public static class PrefabManager
 	{
 		foreach (GameObject prefab in prefabs.Concat(ZnetOnlyPrefabs))
 		{
-			__instance.m_prefabs.Add(prefab);
+			if (!__instance.m_prefabs.Contains(prefab))
+			{
+				__instance.m_prefabs.Add(prefab);
+			}
+			else
+			{
+				Debug.LogWarning($"ZNetScene already contains {prefab.name} it cannot be added twice.");
+			}
 		}
 	}
 }
