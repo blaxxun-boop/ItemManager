@@ -51,7 +51,7 @@ namespace Weapons
 		
 		public void Awake()
 		{
-			Item ironFangAxe = new Item("ironfang", "IronFangAxe", "IronFang");
+			Item ironFangAxe = new("ironfang", "IronFangAxe", "IronFang");
 			ironFangAxe.Name.English("Iron Fang Axe"); // You can use this to fix the display name in code
 			ironFangAxe.Description.English("A sharp blade made of iron.");
 			ironFangAxe.Name.German("Eisenzahnaxt"); // Or add translations for other languages
@@ -65,21 +65,26 @@ namespace Weapons
 			ironFangAxe.RequiredUpgradeItems.Add("Silver", 10); // 10 Silver: You need 10 silver for level 2, 20 silver for level 3, 30 silver for level 4
 			ironFangAxe.CraftAmount = 2; // We really want to dual wield these
 			
-			GameObject axeVisual = ItemManager.PrefabManager.RegisterPrefab("ironfang", "axeVisual"); // If our axe has a special visual effect, like a glow, we can skip adding it to the ObjectDB this way
-			GameObject axeSound = ItemManager.PrefabManager.RegisterPrefab("ironfang", "axeSound"); // Same for special sound effects
+			ItemManager.PrefabManager.RegisterPrefab("ironfang", "axeVisual"); // If our axe has a special visual effect, like a glow, we can skip adding it to the ObjectDB this way
+			ItemManager.PrefabManager.RegisterPrefab("ironfang", "axeSound"); // Same for special sound effects
 			
-			Item heroBlade = new Item("heroset", "HeroBlade");
+			Item heroBlade = new("heroset", "HeroBlade");
 			heroBlade.Crafting.Add(CraftingTable.Workbench, 2);
 			heroBlade.RequiredItems.Add("Wood", 5);
 			heroBlade.RequiredItems.Add("DeerHide", 2);
 			heroBlade.RequiredUpgradeItems.Add("Wood", 2);
 			heroBlade.RequiredUpgradeItems.Add("Flint", 2); // You can even add new items for the upgrade
 			
-			Item heroShield = new Item("heroset", "HeroShield");
-			heroShield.Crafting.Add(CraftingTable.Workbench, 1);
-			heroShield.RequiredItems.Add("Wood", 10);
-			heroShield.RequiredItems.Add("Flint", 5);
-			heroShield.RequiredUpgradeItems.Add("Wood", 5);
+			Item heroShield = new("heroset", "HeroShield");
+			heroShield["My first recipe"].Crafting.Add(CraftingTable.Workbench, 1); // You can add multiple recipes for the same item, by giving the recipe a name
+			heroShield["My first recipe"].RequiredItems.Add("Wood", 10);
+			heroShield["My first recipe"].RequiredItems.Add("Flint", 5);
+			heroShield["My first recipe"].RequiredUpgradeItems.Add("Wood", 5);
+			heroShield["My alternate recipe"].Crafting.Add(CraftingTable.Forge, 1); // And this is our second recipe then
+			heroShield["My alternate recipe"].RequiredItems.Add("Bronze", 2);
+			heroShield["My alternate recipe"].RequiredUpgradeItems.Add("Bronze", 1);
+			heroShield.Snapshot(); // I don't have an icon for this item in my asset bundle, so I will let the ItemManager generate one automatically
+			// The icon for the item will have the same rotation as the item in unity
 		}
 	}
 }
