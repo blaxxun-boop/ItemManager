@@ -240,6 +240,19 @@ public class Item
 		[UsedImplicitly] public Action<ConfigEntryBase>? CustomDrawer;
 	}
 
+	[PublicAPI]
+	public enum DamageModifier
+	{
+		Normal,
+		Resistant,
+		Weak,
+		Immune,
+		Ignore,
+		VeryResistant,
+		VeryWeak,
+		None
+	}
+
 	private static object? configManager;
 
 	private delegate void setDmgFunc(ref HitData.DamageTypes dmg, float value);
@@ -458,14 +471,32 @@ public class Item
 
 					if (itemType is ItemDrop.ItemData.ItemType.Shield or ItemDrop.ItemData.ItemType.Chest or ItemDrop.ItemData.ItemType.Hands or ItemDrop.ItemData.ItemType.Helmet or ItemDrop.ItemData.ItemType.Legs or ItemDrop.ItemData.ItemType.Shoulder)
 					{
-						Dictionary<HitData.DamageType, HitData.DamageModifier> modifiers = shared.m_damageModifiers.ToDictionary(d => d.m_type, d => d.m_modifier);
-						shared.m_damageModifiers.Clear();
-						int i = 0;
-						foreach (HitData.DamageType damageType in (HitData.DamageType[])Enum.GetValues(typeof(HitData.DamageType)))
+						Dictionary<HitData.DamageType, DamageModifier> modifiers = shared.m_damageModifiers.ToDictionary(d => d.m_type, d => (DamageModifier)(int)d.m_modifier);
+						foreach (HitData.DamageType damageType in ((HitData.DamageType[])Enum.GetValues(typeof(HitData.DamageType))).Except(new[] { HitData.DamageType.Chop, HitData.DamageType.Pickaxe, HitData.DamageType.Spirit, HitData.DamageType.Physical, HitData.DamageType.Elemental }))
 						{
-							int index = i++;
-							shared.m_damageModifiers.Add(new HitData.DamageModPair());
-							statcfg($"{damageType.ToString()} Resistance", $"{damageType.ToString()} resistance of {englishName}.", _ => modifiers.TryGetValue(damageType, out HitData.DamageModifier modifier) ? modifier : HitData.DamageModifier.Normal, (shared, value) => shared.m_damageModifiers[index] = new HitData.DamageModPair { m_type = damageType, m_modifier = value });
+							statcfg($"{damageType.ToString()} Resistance", $"{damageType.ToString()} resistance of {englishName}.", _ => modifiers.TryGetValue(damageType, out DamageModifier modifier) ? modifier : DamageModifier.None, (shared, value) =>
+							{
+								HitData.DamageModPair modifier = new() { m_type = damageType, m_modifier = (HitData.DamageModifier)(int)value };
+								for (int i = 0; i < shared.m_damageModifiers.Count; ++i)
+								{
+									if (shared.m_damageModifiers[i].m_type == damageType)
+									{
+										if (value == DamageModifier.None)
+										{
+											shared.m_damageModifiers.RemoveAt(i);
+										}
+										else
+										{
+											shared.m_damageModifiers[i] = modifier;
+										}
+										return;
+									}
+								}
+								if (value != DamageModifier.None)
+								{
+									shared.m_damageModifiers.Add(modifier);
+								}
+							});
 						}
 					}
 
