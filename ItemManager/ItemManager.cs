@@ -401,7 +401,7 @@ public class Item
 							}
 						}
 
-						conversion.config.input = config(englishName, $"{prefix} Conversion Input Item", conversion.Input, $"Duration of conversion to create {englishName}");
+						conversion.config.input = config(englishName, $"{prefix}Conversion Input Item", conversion.Input, $"Duration of conversion to create {englishName}");
 						conversion.config.input.SettingChanged += (_, _) =>
 						{
 							if (index < item.conversions.Count && ObjectDB.instance is { } objectDB)
@@ -411,9 +411,9 @@ public class Item
 								UpdatePiece();
 							}
 						};
-						conversion.config.piece = config(englishName, $"{prefix} Conversion Piece", conversion.Piece, $"Duration of conversion to create {englishName}");
+						conversion.config.piece = config(englishName, $"{prefix}Conversion Piece", conversion.Piece, $"Duration of conversion to create {englishName}");
 						conversion.config.piece.SettingChanged += (_, _) => UpdatePiece();
-						conversion.config.customPiece = config(englishName, $"{prefix} Conversion Custom Piece", conversion.customPiece ?? "", $"Duration of conversion to create {englishName}");
+						conversion.config.customPiece = config(englishName, $"{prefix}Conversion Custom Piece", conversion.customPiece ?? "", $"Duration of conversion to create {englishName}");
 						conversion.config.customPiece.SettingChanged += (_, _) => UpdatePiece();
 					}
 				}
@@ -467,6 +467,11 @@ public class Item
 					{
 						statcfg("Armor", $"Armor of {englishName}.", shared => shared.m_armor, (shared, value) => shared.m_armor = value);
 						statcfg("Armor per Level", $"Armor per level for {englishName}.", shared => shared.m_armorPerLevel, (shared, value) => shared.m_armorPerLevel = value);
+					}
+					
+					if (shared.m_skillType is Skills.SkillType.Axes or Skills.SkillType.Pickaxes)
+					{
+						statcfg("Tool tier", $"Tool tier of {englishName}.", shared => shared.m_toolTier, (shared, value) => shared.m_toolTier = value);
 					}
 
 					if (itemType is ItemDrop.ItemData.ItemType.Shield or ItemDrop.ItemData.ItemType.Chest or ItemDrop.ItemData.ItemType.Hands or ItemDrop.ItemData.ItemType.Helmet or ItemDrop.ItemData.ItemType.Legs or ItemDrop.ItemData.ItemType.Shoulder)
@@ -531,8 +536,8 @@ public class Item
 							statcfg("Accuracy", $"Accuracy for {englishName}.", shared => shared.m_attack.m_projectileAccuracy, (shared, value) => shared.m_attack.m_projectileAccuracy = value);
 							statcfg("Minimum Velocity", $"Minimum velocity for {englishName}.", shared => shared.m_attack.m_projectileVelMin, (shared, value) => shared.m_attack.m_projectileVelMin = value);
 							statcfg("Velocity", $"Velocity for {englishName}.", shared => shared.m_attack.m_projectileVel, (shared, value) => shared.m_attack.m_projectileVel = value);
-							statcfg("Maximum Draw Time", $"Time until {englishName} is fully drawn at skill level 0.", shared => shared.m_holdDurationMin, (shared, value) => shared.m_holdDurationMin = value);
-							statcfg("Stamina Drain", $"Stamina drain per second while drawing {englishName}.", shared => shared.m_holdStaminaDrain, (shared, value) => shared.m_holdStaminaDrain = value);
+							statcfg("Maximum Draw Time", $"Time until {englishName} is fully drawn at skill level 0.", shared => shared.m_attack.m_drawDurationMin, (shared, value) => shared.m_attack.m_drawDurationMin = value);
+							statcfg("Stamina Drain", $"Stamina drain per second while drawing {englishName}.", shared => shared.m_attack.m_drawStaminaDrain, (shared, value) => shared.m_attack.m_drawStaminaDrain = value);
 						}
 					}
 				}
