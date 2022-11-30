@@ -91,6 +91,8 @@ namespace Weapons
 				Input = "HeroShield",
 				Piece = ConversionPiece.Smelter
 			};
+			
+			heroShield.DropsFrom.Add("Greydwarf", 0.3f, 1, 2); // A Greydwarf has a 30% chance, to drop 1-2 hero shields.
 		}
 	}
 }
