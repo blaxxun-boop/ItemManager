@@ -424,18 +424,35 @@ public class Item
 								return;
 							}
 							string? newPieceName = conversion.config.piece.Value is not ConversionPiece.Disabled ? conversion.config.piece.Value == ConversionPiece.Custom ? conversion.config.customPiece.Value : getInternalName(conversion.config.piece.Value) : null;
-							if (item.conversions[index].m_from is null && (conversion.config.activePiece is not null || conversion.config.activePiece != newPieceName))
+							string? activePiece = conversion.config.activePiece;
+							if (conversion.config.activePiece is not null)
 							{
 								Smelter smelter = ZNetScene.instance.GetPrefab(conversion.config.activePiece).GetComponent<Smelter>();
-								smelter.m_conversion.Remove(item.conversions[index]);
+								int removeIndex = smelter.m_conversion.IndexOf(item.conversions[index]);
+								if (removeIndex >= 0)
+								{
+									foreach (Smelter instantiatedSmelter in Resources.FindObjectsOfTypeAll<Smelter>())
+									{
+										if (Utils.GetPrefabName(instantiatedSmelter.gameObject) == activePiece)
+										{
+											instantiatedSmelter.m_conversion.RemoveAt(removeIndex);
+										}
+									}
+								}
 								conversion.config.activePiece = null;
 							}
-							if (item.conversions[index].m_from is not null && conversion.config.activePiece != newPieceName && conversion.config.piece.Value is not ConversionPiece.Disabled)
+							if (item.conversions[index].m_from is not null && conversion.config.piece.Value is not ConversionPiece.Disabled)
 							{
-								if (ZNetScene.instance.GetPrefab(newPieceName)?.GetComponent<Smelter>() is { } smelter)
+								if (ZNetScene.instance.GetPrefab(newPieceName)?.GetComponent<Smelter>() is not null)
 								{
-									smelter.m_conversion.Add(item.conversions[index]);
 									conversion.config.activePiece = newPieceName;
+									foreach (Smelter instantiatedSmelter in Resources.FindObjectsOfTypeAll<Smelter>())
+									{
+										if (Utils.GetPrefabName(instantiatedSmelter.gameObject) == newPieceName)
+										{
+											instantiatedSmelter.m_conversion.Add(item.conversions[index]);
+										}
+									}
 								}
 							}
 						}
@@ -756,6 +773,14 @@ public class Item
 		}
 	}
 
+	internal static void Patch_OnAddSmelterInput(ItemDrop.ItemData item, bool __result)
+	{
+		if (__result)
+		{
+			Player.m_localPlayer.UnequipItem(item);
+		}
+	}
+
 	internal static void Patch_MaximumRequiredStationLevel(Recipe __instance, ref int __result, int quality)
 	{
 		if (itemDropMap.TryGetValue(__instance.m_item, out Item item))
@@ -996,7 +1021,7 @@ public class Item
 		int RightColumnWidth = (int)(configManager?.GetType().GetProperty("RightColumnWidth", BindingFlags.Instance | BindingFlags.NonPublic)!.GetGetMethod(true).Invoke(configManager, Array.Empty<object>()) ?? 130);
 
 		GUILayout.BeginVertical();
-		foreach (DropTarget drop in new SerializedDrop((string)cfg.BoxedValue).Drops)
+		foreach (DropTarget drop in new SerializedDrop((string)cfg.BoxedValue).Drops.DefaultIfEmpty(new DropTarget { min = 1, max = 1, creature = "", chance = 1 }))
 		{
 			GUILayout.BeginHorizontal();
 
@@ -1120,7 +1145,7 @@ public class Item
 
 		public SerializedDrop(string drops)
 		{
-			Drops = drops.Split(',').Select(r =>
+			Drops = (drops == "" ? Array.Empty<string>() : drops.Split(',')).Select(r =>
 			{
 				string[] parts = r.Split(':');
 				if (parts.Length <= 2 || !int.TryParse(parts[2], out int min))
@@ -1362,6 +1387,8 @@ public static class PrefabManager
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(InventoryGui), nameof(InventoryGui.UpdateRecipe)), transpiler: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Transpile_InventoryGui))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(Player), nameof(Player.GetAvailableRecipes)), prefix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_GetAvailableRecipesPrefix))), finalizer: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_GetAvailableRecipesFinalizer))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(Recipe), nameof(Recipe.GetRequiredStationLevel)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_MaximumRequiredStationLevel))));
+		harmony.Patch(AccessTools.DeclaredMethod(typeof(Smelter), nameof(Smelter.OnAddFuel)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_OnAddSmelterInput))));
+		harmony.Patch(AccessTools.DeclaredMethod(typeof(Smelter), nameof(Smelter.OnAddOre)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_OnAddSmelterInput))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(Localization), nameof(Localization.SetupLanguage)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(LocalizationCache), nameof(LocalizationCache.LocalizationPostfix))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(Localization), nameof(Localization.LoadCSV)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(LocalizeKey), nameof(LocalizeKey.AddLocalizedKeys))));
 	}
