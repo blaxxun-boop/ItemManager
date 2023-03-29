@@ -346,6 +346,7 @@ public class Item
 		[UsedImplicitly] public bool? Browsable;
 		[UsedImplicitly] public string? Category;
 		[UsedImplicitly] public Action<ConfigEntryBase>? CustomDrawer;
+		[UsedImplicitly]public bool? IsAdvanced;
 		public Func<bool>? browsability;
 	}
 
@@ -593,7 +594,7 @@ public class Item
 					void statcfg<T>(string configName, string description, Func<ItemDrop.ItemData.SharedData, T> readDefault, Action<ItemDrop.ItemData.SharedData, T> setValue)
 					{
 						ItemDrop.ItemData.SharedData shared = item.Prefab.GetComponent<ItemDrop>().m_itemData.m_shared;
-						ConfigEntry<T> cfg = config(englishName, configName, readDefault(shared), new ConfigDescription(description, null, new ConfigurationManagerAttributes { Category = localizedName, Browsable = (item.configurationVisible & Configurability.Stats) != 0 }));
+						ConfigEntry<T> cfg = config(englishName, configName, readDefault(shared), new ConfigDescription(description, null, new ConfigurationManagerAttributes { Category = localizedName, IsAdvanced = true, Browsable = (item.configurationVisible & Configurability.Stats) != 0 }));
 						if ((item.configurationVisible & Configurability.Stats) != 0)
 						{
 							setValue(shared, cfg.Value);
