@@ -103,13 +103,14 @@ public enum Configurability
 	Full = Recipe | Drop | Stats,
 }
 
+[PublicAPI]
 public class DropTargets
 {
 	public readonly List<DropTarget> Drops = new();
 
-	public void Add(string creatureName, float chance, int min = 1, int? max = null)
+	public void Add(string creatureName, float chance, int min = 1, int? max = null, bool levelMultiplier = true)
 	{
-		Drops.Add(new DropTarget { creature = creatureName, chance = chance, min = min, max = max ?? min });
+		Drops.Add(new DropTarget { creature = creatureName, chance = chance, min = min, max = max ?? min, levelMultiplier = levelMultiplier });
 	}
 }
 
@@ -119,6 +120,7 @@ public struct DropTarget
 	public int min;
 	public int max;
 	public float chance;
+	public bool levelMultiplier;
 }
 
 public enum Toggle
@@ -982,6 +984,14 @@ public class Item
 
 	public void AssignDropToCreature()
 	{
+		foreach (KeyValuePair<CharacterDrop, CharacterDrop.Drop> kv in characterDrops)
+		{
+			if (kv.Key)
+			{
+				kv.Key.m_drops.Remove(kv.Value);
+			}
+		}
+
 		characterDrops.Clear();
 
 		SerializedDrop drops = new(DropsFrom.Drops);
@@ -1005,14 +1015,6 @@ public class Item
 	{
 		if (ZNetScene.instance)
 		{
-			foreach (KeyValuePair<CharacterDrop, CharacterDrop.Drop> kv in characterDrops)
-			{
-				if (kv.Key)
-				{
-					kv.Key.m_drops.Remove(kv.Value);
-				}
-			}
-
 			AssignDropToCreature();
 		}
 	}
@@ -1195,22 +1197,32 @@ public class Item
 				wasUpdated = true;
 			}
 
+			GUILayout.EndHorizontal();
+			GUILayout.BeginHorizontal();
+
+			bool levelMultiplier = drop.levelMultiplier;
+			if (GUILayout.Toggle(levelMultiplier, "Level scaling drop amount") != levelMultiplier)
+			{
+				levelMultiplier = !levelMultiplier;
+				wasUpdated = true;
+			}
+
+			GUILayout.EndHorizontal();
+
 			if (wasDeleted && !locked)
 			{
 				wasUpdated = true;
 			}
 			else
 			{
-				newDrops.Add(new DropTarget { creature = creature, min = min, max = max, chance = chance });
+				newDrops.Add(new DropTarget { creature = creature, min = min, max = max, chance = chance, levelMultiplier = levelMultiplier });
 			}
 
 			if (wasAdded && !locked)
 			{
 				wasUpdated = true;
-				newDrops.Add(new DropTarget { min = 1, max = 1, creature = "", chance = 1 });
+				newDrops.Add(new DropTarget { min = 1, max = 1, creature = "", chance = 1, levelMultiplier = true });
 			}
-
-			GUILayout.EndHorizontal();
 		}
 		GUILayout.EndVertical();
 
@@ -1291,13 +1303,14 @@ public class Item
 				{
 					max = min;
 				}
-				return new DropTarget { creature = parts[0], chance = parts.Length > 1 && float.TryParse(parts[1], out float chance) ? chance : 1, min = min, max = max };
+				bool levelMultiplier = parts.Length <= 4 || parts[4] != "0";
+				return new DropTarget { creature = parts[0], chance = parts.Length > 1 && float.TryParse(parts[1], out float chance) ? chance : 1, min = min, max = max, levelMultiplier = levelMultiplier };
 			}).ToList();
 		}
 
 		public override string ToString()
 		{
-			return string.Join(",", Drops.Select(r => $"{r.creature}:{r.chance.ToString(CultureInfo.InvariantCulture)}:{r.min}" + (r.min == r.max ? "" : $":{r.max}")));
+			return string.Join(",", Drops.Select(r => $"{r.creature}:{r.chance.ToString(CultureInfo.InvariantCulture)}:{r.min}:" + (r.min == r.max ? "" : $"{r.max}") + (r.levelMultiplier ? "" : ":0")));
 		}
 
 		private static Character? fetchByName(ZNetScene netScene, string name)
@@ -1317,7 +1330,7 @@ public class Item
 			{
 				if (fetchByName(netScene, drop.creature) is { } character)
 				{
-					drops[character] = new CharacterDrop.Drop { m_prefab = item, m_amountMin = drop.min, m_amountMax = drop.max, m_chance = drop.chance };
+					drops[character] = new CharacterDrop.Drop { m_prefab = item, m_amountMin = drop.min, m_amountMax = drop.max, m_chance = drop.chance, m_levelMultiplier = drop.levelMultiplier };
 				}
 			}
 
