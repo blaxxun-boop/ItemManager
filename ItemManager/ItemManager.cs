@@ -1041,7 +1041,19 @@ public class Item
 
 		Rect rect = new(0, 0, 64, 64);
 
-		GameObject visual = UnityEngine.Object.Instantiate(item.transform.Find("attach").gameObject);
+		GameObject visual = null!;
+		if (item.transform.Find("attach") is { } attach)
+		{
+			visual = UnityEngine.Object.Instantiate(attach.gameObject);
+		}
+		else
+		{
+			visual = new GameObject("toInstantiateVisual");
+			foreach (Transform t in item.transform)
+				if (t.gameObject.activeSelf)
+					UnityEngine.Object.Instantiate(t.gameObject, visual.transform);
+		}
+		
 		foreach (Transform child in visual.GetComponentsInChildren<Transform>())
 		{
 			child.gameObject.layer = layer;
