@@ -79,6 +79,19 @@ public class ItemRecipe
 	public ConfigEntryBase? RecipeIsActive = null;
 }
 
+[PublicAPI]
+public class TraderConfig
+{
+	public ConfigEntry<Toggle>? Toggle = null;
+	public ConfigEntry<int>? Price = null;
+	public ConfigEntry<int>? Stack = null;
+	public ConfigEntry<string>? RequiredGlobalKey = null;
+
+	public TraderConfig()
+	{
+	}
+}
+
 public struct Requirement
 {
 	public string itemName;
@@ -144,6 +157,7 @@ public class Item
 		public ConfigEntry<float> qualityResultAmountMultiplier = null!;
 	}
 
+	internal TraderConfig? TraderConfig;
 	private static readonly List<Item> registeredItems = new();
 	private static readonly Dictionary<ItemDrop, Item> itemDropMap = new();
 	private static Dictionary<Item, Dictionary<string, List<Recipe>>> activeRecipes = new();
@@ -903,6 +917,48 @@ public class Item
 			}
 		}
 	}
+	
+	public Item AddToTrader(int priceDefault = 100, int stackDefault = 1, string requiredGlobalKeyDefault = "", Toggle toggleDefault = Toggle.On)
+	{
+		if (TraderConfig == null)
+		{
+			string nameKey = Prefab.GetComponent<ItemDrop>().m_itemData.m_shared.m_name;
+			string englishName = new Regex("['[\"\\]]").Replace(english.Localize(nameKey), "").Trim();
+			string localizedName = Localization.instance.Localize(nameKey).Trim();
+			TraderConfig = new TraderConfig
+			{
+				Toggle = config(englishName, "Trader Availability", toggleDefault, $"Enable/Disable {englishName} in the trader"),
+				Price = config(englishName, "Trader Price", priceDefault, $"Price of {englishName} in the trader"),
+				Stack = config(englishName, "Trader Stack", stackDefault, $"Stack size of {englishName} in the trader. Also known as the number of items sold by a trader in one transaction."),
+				RequiredGlobalKey = config(englishName, "Trader Required Global Key", requiredGlobalKeyDefault, $"Required global key to unlock {englishName} in the trader")
+			};
+			
+			if (TraderConfig.Toggle.Value == Toggle.On)
+			{
+				PrefabManager.UpdateTraderItems(Prefab, TraderConfig.Toggle.Value, TraderConfig.Price.Value, TraderConfig.Stack.Value, TraderConfig.RequiredGlobalKey.Value);
+			}
+
+			TraderConfig.Toggle.SettingChanged += (_, _) =>
+			{
+				if (TraderConfig.Toggle.Value == Toggle.Off)
+				{
+					PrefabManager.RemoveItemFromTrader(Prefab.GetComponent<ItemDrop>());
+				}
+				else
+				{
+					PrefabManager.UpdateTraderItems(Prefab, TraderConfig.Toggle.Value, TraderConfig.Price.Value, TraderConfig.Stack.Value, TraderConfig.RequiredGlobalKey.Value);
+				}
+			};
+		}
+		return this;
+	}
+
+
+	
+	public static void Patch_TraderGetAvailableItems(ref List<Trader.TradeItem> __result)
+	{
+		__result.AddRange(PrefabManager.CustomTradeItems.Where(tradeItem => string.IsNullOrEmpty(tradeItem.m_requiredGlobalKey) || ZoneSystem.instance.GetGlobalKey(tradeItem.m_requiredGlobalKey)));
+	}
 
 	internal static void Patch_OnAddSmelterInput(ItemDrop.ItemData item, bool __result)
 	{
@@ -1549,6 +1605,7 @@ public static class PrefabManager
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(Recipe), nameof(Recipe.GetRequiredStationLevel)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_MaximumRequiredStationLevel))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(Smelter), nameof(Smelter.OnAddFuel)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_OnAddSmelterInput))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(Smelter), nameof(Smelter.OnAddOre)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_OnAddSmelterInput))));
+		harmony.Patch(AccessTools.DeclaredMethod(typeof(Trader), nameof(Trader.GetAvailableItems)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_TraderGetAvailableItems))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(Localization), nameof(Localization.SetupLanguage)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(LocalizationCache), nameof(LocalizationCache.LocalizationPostfix))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(Localization), nameof(Localization.LoadCSV)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(LocalizeKey), nameof(LocalizeKey.AddLocalizedKeys))));
 	}
@@ -1591,6 +1648,37 @@ public static class PrefabManager
 		}
 
 		return prefab;
+	}
+	
+	internal static readonly List<Trader.TradeItem> CustomTradeItems = new();
+	public static void AddItemToTrader(GameObject prefab, Toggle toggle, int price, int stack = 1, string requiredGlobalKey = "")
+	{
+		ItemDrop itemDrop = prefab.GetComponent<ItemDrop>();
+
+		if (toggle == Toggle.On)
+		{
+			CustomTradeItems.Add(new Trader.TradeItem
+			{
+				m_prefab = itemDrop,
+				m_price = price,
+				m_stack = stack,
+				m_requiredGlobalKey = requiredGlobalKey
+			});
+		}
+		else
+		{
+			CustomTradeItems.RemoveAll(tradeItem => tradeItem.m_prefab == itemDrop);
+		}
+	}
+
+	public static void UpdateTraderItems(GameObject prefab, Toggle toggle, int price, int stack = 1, string requiredGlobalKey = "")
+	{
+		AddItemToTrader(prefab, toggle, price, stack, requiredGlobalKey);
+	}
+	
+	public static void RemoveItemFromTrader(ItemDrop prefab)
+	{
+		CustomTradeItems.RemoveAll(item => item.m_prefab == prefab);
 	}
 
 	[HarmonyPriority(Priority.VeryHigh)]
