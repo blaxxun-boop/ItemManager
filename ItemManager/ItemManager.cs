@@ -1549,7 +1549,7 @@ public class Item
 
 			GUILayout.Label("Chance: ");
 			float chance = drop.chance;
-			if (float.TryParse(GUILayout.TextField((chance * 100).ToString(CultureInfo.InvariantCulture), new GUIStyle(GUI.skin.textField) { fixedWidth = 45 }), out float newChance) && !Mathf.Approximately(newChance / 100, chance) && !locked)
+			if (float.TryParse(GUILayout.TextField((chance * 100).ToString(CultureInfo.InvariantCulture), new GUIStyle(GUI.skin.textField) { fixedWidth = 45 }), NumberStyles.Float, CultureInfo.InvariantCulture, out float newChance) && !Mathf.Approximately(newChance / 100, chance) && !locked)
 			{
 				chance = newChance / 100;
 				wasUpdated = true;
