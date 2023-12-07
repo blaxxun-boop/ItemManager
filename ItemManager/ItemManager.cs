@@ -1803,7 +1803,11 @@ public class LocalizeKey
 	public readonly string Key;
 	public readonly Dictionary<string, string> Localizations = new();
 
-	public LocalizeKey(string key) => Key = key.Replace("$", "");
+	public LocalizeKey(string key)
+	{
+		Key = key.Replace("$", "");
+		keys.Add(this);
+	}
 
 	public void Alias(string alias)
 	{
@@ -1876,7 +1880,7 @@ public class LocalizeKey
 			}
 			else if (key.Localizations.TryGetValue("alias", out string alias))
 			{
-				Localization.instance.AddWord(key.Key, Localization.instance.Localize(alias));
+				__instance.AddWord(key.Key, Localization.instance.Localize(alias));
 			}
 		}
 	}
