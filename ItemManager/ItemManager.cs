@@ -28,6 +28,8 @@ public enum CraftingTable
 	[InternalName("piece_stonecutter")] StoneCutter,
 	[InternalName("piece_magetable")] MageTable,
 	[InternalName("blackforge")] BlackForge,
+	[InternalName("piece_preptable")] FoodPreparationTable,
+	[InternalName("piece_MeadCauldron")] MeadKetill,
 	Custom,
 }
 
@@ -260,58 +262,6 @@ public class Item
 		}
 	}
 
-	private LocalizeKey? _name;
-
-	public LocalizeKey Name
-	{
-		get
-		{
-			if (_name is { } name)
-			{
-				return name;
-			}
-
-			ItemDrop.ItemData.SharedData data = Prefab.GetComponent<ItemDrop>().m_itemData.m_shared;
-			if (data.m_name.StartsWith("$"))
-			{
-				_name = new LocalizeKey(data.m_name);
-			}
-			else
-			{
-				string key = "$item_" + Prefab.name.Replace(" ", "_");
-				_name = new LocalizeKey(key).English(data.m_name);
-				data.m_name = key;
-			}
-			return _name;
-		}
-	}
-
-	private LocalizeKey? _description;
-
-	public LocalizeKey Description
-	{
-		get
-		{
-			if (_description is { } description)
-			{
-				return description;
-			}
-
-			ItemDrop.ItemData.SharedData data = Prefab.GetComponent<ItemDrop>().m_itemData.m_shared;
-			if (data.m_description.StartsWith("$"))
-			{
-				_description = new LocalizeKey(data.m_description);
-			}
-			else
-			{
-				string key = "$itemdesc_" + Prefab.name.Replace(" ", "_");
-				_description = new LocalizeKey(key).English(data.m_description);
-				data.m_description = key;
-			}
-			return _description;
-		}
-	}
-
 	public Item(string assetBundleFileName, string prefabName, string folderName = "assets") : this(PrefabManager.RegisterAssetBundle(assetBundleFileName, folderName), prefabName)
 	{
 	}
@@ -475,6 +425,10 @@ public class Item
 					foreach (string configKey in item.Recipes.Keys.DefaultIfEmpty(""))
 					{
 						string configSuffix = configKey == "" ? "" : $" ({configKey})";
+						if (configKey == "" && item.Configurable is not null && item.Crafting.Stations.Count == 0)
+						{
+							item.Crafting.Add(CraftingTable.Disabled, 1);
+						}
 
 						if (item.Recipes.ContainsKey(configKey) && item.Recipes[configKey].Crafting.Stations.Count > 0)
 						{
@@ -517,7 +471,7 @@ public class Item
 							}
 
 							bool QualityResultBrowsability() => cfg.requireOneIngredient.Value == Toggle.On;
-							cfg.requireOneIngredient = config(englishName, "Require only one resource" + configSuffix, item.Recipes[configKey].RequireOnlyOneIngredient ? Toggle.On : Toggle.Off, new ConfigDescription($"Whether only one of the ingredients is needed to craft {englishName}", null, new ConfigurationManagerAttributes { Order = --order, Category = localizedName }));
+							cfg.requireOneIngredient = config(englishName, "Require only one resource" + configSuffix, item.Recipes[configKey].RequireOnlyOneIngredient ? Toggle.On : Toggle.Off, new ConfigDescription($"Whether only one of the ingredients is needed to craft {englishName}", null, new ConfigurationManagerAttributes { Order = --order, browsability = TableLevelBrowsability, Browsable = TableLevelBrowsability() && (item.configurationVisible & Configurability.Recipe) != 0, Category = localizedName }));
 							ConfigurationManagerAttributes qualityResultAttributes = new() { Order = --order, browsability = QualityResultBrowsability, Browsable = QualityResultBrowsability() && (item.configurationVisible & Configurability.Recipe) != 0, Category = localizedName };
 							cfg.requireOneIngredient.SettingChanged += (_, _) =>
 							{
@@ -967,7 +921,7 @@ public class Item
 				Recipe recipe = ScriptableObject.CreateInstance<Recipe>();
 				recipe.name = $"{Prefab.name}_Recipe_{station.Table.ToString()}";
 				recipe.m_amount = kv.Value.CraftAmount;
-				recipe.m_enabled = cfg is null ? (int)(kv.Value.RecipeIsActive?.BoxedValue ?? 1) != 0 : cfg.table.Value != CraftingTable.Disabled;
+				recipe.m_enabled = (int)(kv.Value.RecipeIsActive?.BoxedValue ?? 1) != 0 && cfg?.table.Value != CraftingTable.Disabled;
 				recipe.m_item = Prefab.GetComponent<ItemDrop>();
 				recipe.m_resources = SerializedRequirements.toPieceReqs(objectDB, cfg?.craft == null ? new SerializedRequirements(kv.Value.RequiredItems.Requirements) : new SerializedRequirements(cfg.craft.Value), cfg?.upgrade == null ? new SerializedRequirements(kv.Value.RequiredUpgradeItems.Requirements) : new SerializedRequirements(cfg.upgrade.Value));
 				if ((cfg == null || recipes.Count > 0 ? station.Table : cfg.table.Value) is CraftingTable.Inventory or CraftingTable.Disabled)
@@ -994,7 +948,7 @@ public class Item
 				recipe.m_qualityResultAmountMultiplier = cfg?.qualityResultAmountMultiplier.Value ?? kv.Value.QualityResultAmountMultiplier;
 
 				recipes.Add(recipe);
-				if (kv.Value.RequiredItems is { Free: false, Requirements.Count: 0 })
+				if (station.Table != CraftingTable.Disabled && kv.Value.RequiredItems is { Free: false, Requirements.Count: 0 })
 				{
 					hiddenCraftRecipes.Add(recipe, kv.Value.RecipeIsActive);
 				}
@@ -1101,9 +1055,9 @@ public class Item
 		}
 	}
 
-	internal static void Patch_GetAvailableRecipesPrefix(ref Dictionary<Assembly, Dictionary<Recipe, ConfigEntryBase?>>? __state)
+	internal static void Patch_GetAvailableRecipesPrefix(ref Dictionary<Assembly, List<Recipe>>? __state)
 	{
-		__state ??= new Dictionary<Assembly, Dictionary<Recipe, ConfigEntryBase?>>();
+		__state ??= new Dictionary<Assembly, List<Recipe>>();
 		Dictionary<Recipe, ConfigEntryBase?>? hidden;
 		if (InventoryGui.instance.InCraftTab())
 		{
@@ -1118,20 +1072,21 @@ public class Item
 			return;
 		}
 
-		foreach (Recipe recipe in hidden.Keys)
+		List<Recipe> toHide = hidden.Select(kv => kv.Key).Where(r => r.m_enabled).ToList();
+		__state[Assembly.GetExecutingAssembly()] = toHide;
+		foreach (Recipe recipe in toHide)
 		{
 			recipe.m_enabled = false;
 		}
-		__state[Assembly.GetExecutingAssembly()] = hidden;
 	}
 
-	internal static void Patch_GetAvailableRecipesFinalizer(Dictionary<Assembly, Dictionary<Recipe, ConfigEntryBase?>> __state)
+	internal static void Patch_GetAvailableRecipesFinalizer(Dictionary<Assembly, List<Recipe>> __state)
 	{
-		if (__state.TryGetValue(Assembly.GetExecutingAssembly(), out Dictionary<Recipe, ConfigEntryBase?> hidden))
+		if (__state.TryGetValue(Assembly.GetExecutingAssembly(), out List<Recipe> hidden))
 		{
-			foreach (KeyValuePair<Recipe, ConfigEntryBase?> kv in hidden)
+			foreach (Recipe recipe in hidden)
 			{
-				kv.Key.m_enabled = (int)(kv.Value?.BoxedValue ?? 1) != 0;
+				recipe.m_enabled = true;
 			}
 		}
 	}
@@ -1383,7 +1338,7 @@ public class Item
 		}
 	}
 
-	private static bool CheckItemIsUpgrade(InventoryGui gui) => gui.m_selectedRecipe.Value?.m_quality > 0;
+	private static bool CheckItemIsUpgrade(InventoryGui gui) => gui.m_selectedRecipe.ItemData?.m_quality > 0;
 
 	internal static IEnumerable<CodeInstruction> Transpile_InventoryGui(IEnumerable<CodeInstruction> instructions)
 	{
@@ -1795,97 +1750,6 @@ public class Item
 	private static ConfigEntry<T> config<T>(string group, string name, T value, string description) => config(group, name, value, new ConfigDescription(description));
 }
 
-[PublicAPI]
-public class LocalizeKey
-{
-	private static readonly List<LocalizeKey> keys = new();
-
-	public readonly string Key;
-	public readonly Dictionary<string, string> Localizations = new();
-
-	public LocalizeKey(string key)
-	{
-		Key = key.Replace("$", "");
-		keys.Add(this);
-	}
-
-	public void Alias(string alias)
-	{
-		Localizations.Clear();
-		if (!alias.Contains("$"))
-		{
-			alias = $"${alias}";
-		}
-		Localizations["alias"] = alias;
-		Localization.instance.AddWord(Key, Localization.instance.Localize(alias));
-	}
-
-	public LocalizeKey English(string key) => addForLang("English", key);
-	public LocalizeKey Swedish(string key) => addForLang("Swedish", key);
-	public LocalizeKey French(string key) => addForLang("French", key);
-	public LocalizeKey Italian(string key) => addForLang("Italian", key);
-	public LocalizeKey German(string key) => addForLang("German", key);
-	public LocalizeKey Spanish(string key) => addForLang("Spanish", key);
-	public LocalizeKey Russian(string key) => addForLang("Russian", key);
-	public LocalizeKey Romanian(string key) => addForLang("Romanian", key);
-	public LocalizeKey Bulgarian(string key) => addForLang("Bulgarian", key);
-	public LocalizeKey Macedonian(string key) => addForLang("Macedonian", key);
-	public LocalizeKey Finnish(string key) => addForLang("Finnish", key);
-	public LocalizeKey Danish(string key) => addForLang("Danish", key);
-	public LocalizeKey Norwegian(string key) => addForLang("Norwegian", key);
-	public LocalizeKey Icelandic(string key) => addForLang("Icelandic", key);
-	public LocalizeKey Turkish(string key) => addForLang("Turkish", key);
-	public LocalizeKey Lithuanian(string key) => addForLang("Lithuanian", key);
-	public LocalizeKey Czech(string key) => addForLang("Czech", key);
-	public LocalizeKey Hungarian(string key) => addForLang("Hungarian", key);
-	public LocalizeKey Slovak(string key) => addForLang("Slovak", key);
-	public LocalizeKey Polish(string key) => addForLang("Polish", key);
-	public LocalizeKey Dutch(string key) => addForLang("Dutch", key);
-	public LocalizeKey Portuguese_European(string key) => addForLang("Portuguese_European", key);
-	public LocalizeKey Portuguese_Brazilian(string key) => addForLang("Portuguese_Brazilian", key);
-	public LocalizeKey Chinese(string key) => addForLang("Chinese", key);
-	public LocalizeKey Japanese(string key) => addForLang("Japanese", key);
-	public LocalizeKey Korean(string key) => addForLang("Korean", key);
-	public LocalizeKey Hindi(string key) => addForLang("Hindi", key);
-	public LocalizeKey Thai(string key) => addForLang("Thai", key);
-	public LocalizeKey Abenaki(string key) => addForLang("Abenaki", key);
-	public LocalizeKey Croatian(string key) => addForLang("Croatian", key);
-	public LocalizeKey Georgian(string key) => addForLang("Georgian", key);
-	public LocalizeKey Greek(string key) => addForLang("Greek", key);
-	public LocalizeKey Serbian(string key) => addForLang("Serbian", key);
-	public LocalizeKey Ukrainian(string key) => addForLang("Ukrainian", key);
-
-	private LocalizeKey addForLang(string lang, string value)
-	{
-		Localizations[lang] = value;
-		if (Localization.instance.GetSelectedLanguage() == lang)
-		{
-			Localization.instance.AddWord(Key, value);
-		}
-		else if (lang == "English" && !Localization.instance.m_translations.ContainsKey(Key))
-		{
-			Localization.instance.AddWord(Key, value);
-		}
-		return this;
-	}
-
-	[HarmonyPriority(Priority.LowerThanNormal)]
-	internal static void AddLocalizedKeys(Localization __instance, string language)
-	{
-		foreach (LocalizeKey key in keys)
-		{
-			if (key.Localizations.TryGetValue(language, out string Translation) || key.Localizations.TryGetValue("English", out Translation))
-			{
-				__instance.AddWord(key.Key, Translation);
-			}
-			else if (key.Localizations.TryGetValue("alias", out string alias))
-			{
-				__instance.AddWord(key.Key, Localization.instance.Localize(alias));
-			}
-		}
-	}
-}
-
 public static class LocalizationCache
 {
 	private static readonly Dictionary<string, Localization> localizations = new();
@@ -1939,7 +1803,6 @@ public static class PrefabManager
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(Smelter), nameof(Smelter.OnAddOre)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_OnAddSmelterInput))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(global::Trader), nameof(global::Trader.GetAvailableItems)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Item), nameof(Item.Patch_TraderGetAvailableItems))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(Localization), nameof(Localization.SetupLanguage)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(LocalizationCache), nameof(LocalizationCache.LocalizationPostfix))));
-		harmony.Patch(AccessTools.DeclaredMethod(typeof(Localization), nameof(Localization.LoadCSV)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(LocalizeKey), nameof(LocalizeKey.AddLocalizedKeys))));
 	}
 
 	private struct BundleId
@@ -2025,7 +1888,7 @@ public static class PrefabManager
 			RegisterStatusEffect(shared.m_setStatusEffect);
 		}
 
-		__instance.UpdateItemHashes();
+		__instance.UpdateRegisters();
 	}
 
 	[HarmonyPriority(Priority.VeryHigh)]
